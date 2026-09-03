@@ -1,5 +1,7 @@
 # Distributionsnetzwerk-Optimierung (Min-Cost-Flow, Netzwerksimplex)
 
+**[→ Demo live ausprobieren](https://sebastianhanisch-network-flow-demo.streamlit.app/)**
+
 Interaktive Demo zu einem mehrstufigen Distributionsnetz: Werke beliefern Filialen über
 Verteilzentren, gesucht ist der kostenminimale Warenfluss durchs gesamte Netzwerk unter
 Produktions-, Umschlag- und Transportkapazitäten. Kernstück ist eine **eigene
