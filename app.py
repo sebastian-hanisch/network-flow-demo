@@ -163,6 +163,12 @@ with st.sidebar:
     )
     if n_periods == 1:
         st.caption("ℹ️ Mit nur einer Periode reduziert sich das Modell auf den Ein-Perioden-Fall (keine Lagerhaltung).")
+    elif peak_multiplier <= 1.0:
+        st.caption(
+            "ℹ️ Bei flacher Nachfrage (Faktor 1.0) lohnt sich Lagerhaltung nie - "
+            "Lagerhaltungskosten sind nie negativ. Regler oben erhöhen, um eine "
+            "Nachfrage-Spitze zu erzeugen und Bestandsaufbau zu sehen."
+        )
 
 sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed), int(n_periods), peak_multiplier)
 
@@ -195,7 +201,12 @@ metric_cols[2].metric("Simplex-Iterationen", f"{simplex['iterations']}")
 metric_cols[3].metric("Laufzeit (eigener Solver)", f"{simplex['runtime']*1000:.2f} ms", delta=f"OR-Tools: {reference['runtime']*1000:.2f} ms", delta_color="off")
 if instance.n_periods > 1:
     inv_used = inventory_total(instance, simplex["flow"])
-    metric_cols[4].metric("Lagerhaltung (Summe)", f"{inv_used:.0f} Einheiten", delta="über alle Periodenübergänge")
+    metric_cols[4].metric(
+        "Lagerhaltung (Summe)", f"{inv_used:.0f} Einheiten", delta="über alle Periodenübergänge",
+        help="0, solange die Nachfrage über die Perioden flach ist (Regler \"Nachfrage-Spitze\" = 1.0) - "
+             "Lagerhaltung kostet immer etwas, lohnt sich also nur, wenn dadurch später Fehlmenge oder "
+             "eine teurere Route vermieden wird.",
+    )
 
 if cost_match:
     st.success(
