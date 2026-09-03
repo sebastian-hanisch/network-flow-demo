@@ -27,6 +27,8 @@ SETTING_SPECS = {
     "dc_scale_slider": SettingSpec("dcs", float, 1.0, 0.2, 1.5),
     "plant_scale_slider": SettingSpec("ps", float, 1.0, 0.3, 1.5),
     "seed_input": SettingSpec("seed", int, C.RANDOM_SEED_DEFAULT, *C.RANDOM_SEED_RANGE),
+    "n_periods_slider": SettingSpec("t", int, C.N_PERIODS_DEFAULT, *C.N_PERIODS_RANGE),
+    "peak_multiplier_slider": SettingSpec("peak", float, C.DEMAND_PEAK_MULTIPLIER_DEFAULT, *C.DEMAND_PEAK_MULTIPLIER_RANGE),
 }
 
 
@@ -43,6 +45,8 @@ def apply_preset(name):
     st.session_state["dc_scale_slider"] = p["dc_throughput_scale"]
     st.session_state["plant_scale_slider"] = p.get("plant_capacity_scale", 1.0)
     st.session_state["seed_input"] = p["seed"]
+    st.session_state["n_periods_slider"] = p.get("n_periods", C.N_PERIODS_DEFAULT)
+    st.session_state["peak_multiplier_slider"] = p.get("demand_peak_multiplier", C.DEMAND_PEAK_MULTIPLIER_DEFAULT)
 
 
 def randomize_seed():
@@ -75,7 +79,7 @@ def init_session_state_defaults():
             st.session_state[state_key] = spec.default
 
 
-def sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed):
+def sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed, n_periods, peak_multiplier):
     try:
         st.query_params["np"] = str(int(n_plants))
         st.query_params["nd"] = str(int(n_dcs))
@@ -83,5 +87,7 @@ def sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed):
         st.query_params["dcs"] = str(dc_scale)
         st.query_params["ps"] = str(plant_scale)
         st.query_params["seed"] = str(int(seed))
+        st.query_params["t"] = str(int(n_periods))
+        st.query_params["peak"] = str(peak_multiplier)
     except Exception:
         pass

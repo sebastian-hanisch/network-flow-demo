@@ -10,6 +10,12 @@ Verteilzentren -> Filialen), wie der Algorithmus arbeitet, vergleicht ihn mit ei
 unoptimierten First-Come-First-Served-Baseline und verifiziert seine Korrektheit sowie
 Laufzeit gegen Google OR-Tools als Referenzlöser.
 
+Mehrperioden-Erweiterung (Regler "Anzahl Perioden" > 1): das Netzwerk wird zeit-expandiert,
+Verteilzentren können über eine Lagerhaltungskante Bestand in die nächste Periode
+mitnehmen - der Netzwerksimplex selbst bleibt dabei unverändert, er löst nur ein
+größeres, strukturell identisches Min-Cost-Flow-Problem. Bei n_periods=1 (Default)
+reduziert sich alles exakt auf die vorherige Ein-Perioden-Variante.
+
 Selbe Struktur wie bei den anderen Demos in diesem Workspace: Ergebnis zuerst,
 vollständiger Methodenvergleich sekundär im Expander, dazu "Wie funktioniert diese
 Demo?" und "Mathematische Formulierung" als eigene Expander.
@@ -25,7 +31,7 @@ import streamlit as st
 
 import flow_constants as C
 import flow_scenario
-from flow_evaluation import comparison_rows, savings_pct, shortfall_total, total_cost
+from flow_evaluation import comparison_rows, inventory_total, savings_pct, shortfall_total, total_cost
 from flow_naive import solve_naive
 from flow_network_simplex import solve_network_simplex
 from flow_pdf_export import generate_distribution_plan_pdf
@@ -38,7 +44,7 @@ from flow_presets import (
     sync_query_params,
 )
 from flow_reference_solver import solve_reference
-from flow_visualization import cost_breakdown_figure, runtime_figure, sankey_figure, utilization_figure
+from flow_visualization import cost_breakdown_figure, inventory_figure, runtime_figure, sankey_figure, utilization_figure
 
 NAIVE_LABEL = "Unoptimiert (FCFS je Filiale)"
 SIMPLEX_LABEL = "Netzwerksimplex (eigene Implementierung)"
@@ -46,8 +52,11 @@ REFERENCE_LABEL = "Referenz (Google OR-Tools)"
 
 
 @st.cache_data(show_spinner=False)
-def _compute(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed):
-    instance = flow_scenario.generate_instance(n_plants, n_dcs, n_stores, seed, dc_scale, plant_scale)
+def _compute(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed, n_periods, peak_multiplier):
+    instance = flow_scenario.generate_instance(
+        n_plants, n_dcs, n_stores, seed, dc_scale, plant_scale,
+        n_periods=n_periods, demand_peak_multiplier=peak_multiplier,
+    )
 
     t0 = time.perf_counter()
     naive_flow, naive_cost = solve_naive(instance)
@@ -77,16 +86,16 @@ st.markdown(
     """
 Interaktive Demo zum **Min-Cost-Flow-Problem**: Ein Unternehmen beliefert Filialen über
 Werke und Verteilzentren - gesucht ist der kostenminimale Warenfluss durchs gesamte
-Netzwerk, unter Produktions-, Umschlag- und Transportkapazitäten. Kernstück ist eine
-eigene Implementierung des **Netzwerksimplex-Algorithmus**, verifiziert gegen Google
-OR-Tools und verglichen mit einer unkoordinierten Baseline. Hintergrund im Expander
-"Wie funktioniert diese Demo?" unten sowie formal hergeleitet im Expander
-"📐 Mathematische Formulierung".
+Netzwerk, unter Produktions-, Umschlag- und Transportkapazitäten, wahlweise über mehrere
+Perioden mit Lagerhaltung. Kernstück ist eine eigene Implementierung des
+**Netzwerksimplex-Algorithmus**, verifiziert gegen Google OR-Tools und verglichen mit
+einer unkoordinierten Baseline. Hintergrund im Expander "Wie funktioniert diese Demo?"
+unten sowie formal hergeleitet im Expander "📐 Mathematische Formulierung".
 """
 )
 
 st.caption("🎯 Schnellstart – ein Beispielszenario laden:")
-preset_col1, preset_col2, preset_col3 = st.columns(3)
+preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
 with preset_col1:
     st.button(
         "🏭 Normalfall", use_container_width=True,
@@ -104,6 +113,12 @@ with preset_col3:
         "🏗️ Knappe Werkskapazität", use_container_width=True,
         on_click=apply_preset, args=("Knappe Werkskapazität",),
         help="Wenig Produktionskapazität bei wenigen Werken - der Fehlmengen-Mechanismus greift hier anders als beim DC-Engpass.",
+    )
+with preset_col4:
+    st.button(
+        "📈 Nachfragespitze", use_container_width=True,
+        on_click=apply_preset, args=("Nachfragespitze",),
+        help="Mehrperioden-Szenario mit einer Nachfrage-Spitze in der Mitte des Planungshorizonts - zeigt, ob/wie Lagerhaltung sich lohnt.",
     )
 
 st.caption(
@@ -134,9 +149,26 @@ with st.sidebar:
         help="Würfelt einen neuen Zufalls-Seed für Positionen, Kosten und Kapazitäten.",
     )
 
-sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed))
+    st.markdown("**Mehrperioden-Erweiterung**")
+    n_periods = st.slider(
+        "Anzahl Perioden", *bounds("n_periods_slider"), step=1, key="n_periods_slider",
+        help="Ab 2 Perioden können Verteilzentren Bestand mit Lagerhaltungskosten in die nächste "
+             "Periode mitnehmen (begrenzt durch die Lagerkapazität).",
+    )
+    peak_multiplier = st.slider(
+        "Nachfrage-Spitze (Faktor)", *bounds("peak_multiplier_slider"), step=0.1, key="peak_multiplier_slider",
+        help="Erhöht die Nachfrage in der mittleren Periode gegenüber den Randperioden - Faktor 1.0 "
+             "= keine Saisonalität. Wirkt nur bei mehr als einer Periode.",
+        disabled=n_periods == 1,
+    )
+    if n_periods == 1:
+        st.caption("ℹ️ Mit nur einer Periode reduziert sich das Modell auf den Ein-Perioden-Fall (keine Lagerhaltung).")
 
-instance, results = _compute(n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed))
+sync_query_params(n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed), int(n_periods), peak_multiplier)
+
+instance, results = _compute(
+    n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed), int(n_periods), peak_multiplier,
+)
 simplex = results[SIMPLEX_LABEL]
 naive = results[NAIVE_LABEL]
 reference = results[REFERENCE_LABEL]
@@ -156,11 +188,14 @@ shortfall = shortfall_total(instance, simplex["flow"])
 savings = savings_pct(naive["cost"], simplex["cost"])
 cost_match = abs(simplex["cost"] - reference["cost"]) < max(1.0, 0.001 * reference["cost"])
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Gesamtkosten (Netzwerksimplex)", f"{simplex['cost']:,.0f} €", delta=f"{-savings:.1f}% vs. unoptimiert", delta_color="inverse")
-m2.metric("Fehlmenge (Notbeschaffung)", f"{shortfall:.0f} Einheiten", delta=f"von {instance.total_demand:.0f} Gesamtnachfrage" if shortfall > 0 else "keine")
-m3.metric("Simplex-Iterationen", f"{simplex['iterations']}")
-m4.metric("Laufzeit (eigener Solver)", f"{simplex['runtime']*1000:.2f} ms", delta=f"OR-Tools: {reference['runtime']*1000:.2f} ms", delta_color="off")
+metric_cols = st.columns(5 if instance.n_periods > 1 else 4)
+metric_cols[0].metric("Gesamtkosten (Netzwerksimplex)", f"{simplex['cost']:,.0f} €", delta=f"{-savings:.1f}% vs. unoptimiert", delta_color="inverse")
+metric_cols[1].metric("Fehlmenge (Notbeschaffung)", f"{shortfall:.0f} Einheiten", delta=f"von {instance.total_demand:.0f} Gesamtnachfrage" if shortfall > 0 else "keine")
+metric_cols[2].metric("Simplex-Iterationen", f"{simplex['iterations']}")
+metric_cols[3].metric("Laufzeit (eigener Solver)", f"{simplex['runtime']*1000:.2f} ms", delta=f"OR-Tools: {reference['runtime']*1000:.2f} ms", delta_color="off")
+if instance.n_periods > 1:
+    inv_used = inventory_total(instance, simplex["flow"])
+    metric_cols[4].metric("Lagerhaltung (Summe)", f"{inv_used:.0f} Einheiten", delta="über alle Periodenübergänge")
 
 if cost_match:
     st.success(
@@ -174,7 +209,30 @@ else:
         f"{reference['cost']:,.2f} € (OR-Tools) - sollte praktisch nicht vorkommen, bitte melden."
     )
 
-st.plotly_chart(sankey_figure(instance, simplex["flow"], f"Warenfluss – {SIMPLEX_LABEL}"), use_container_width=True)
+if instance.n_periods > 1:
+    shown_period = st.select_slider(
+        "Periode anzeigen (Warenfluss-Diagramm unten)",
+        options=list(range(instance.n_periods)),
+        format_func=lambda t: f"Periode {t + 1}",
+        key="shown_period",
+    )
+else:
+    shown_period = 0
+
+st.plotly_chart(
+    sankey_figure(instance, simplex["flow"], f"Warenfluss – {SIMPLEX_LABEL} (Periode {shown_period + 1})", period=shown_period),
+    use_container_width=True,
+)
+
+if instance.n_periods > 1:
+    st.plotly_chart(
+        inventory_figure(instance, simplex["flow"], f"Lagerbestand über die Zeit – {SIMPLEX_LABEL}"),
+        use_container_width=True,
+    )
+    st.caption(
+        "Bestand, den ein Verteilzentrum von einer Periode in die nächste mitnimmt - sichtbar wird, "
+        "WANN im Zeitverlauf für eine spätere Nachfragespitze vorausschauend Bestand aufgebaut wird."
+    )
 
 pdf_bytes = generate_distribution_plan_pdf(instance, SIMPLEX_LABEL, simplex["flow"], simplex["cost"], simplex["runtime"] * 1000)
 st.download_button(
@@ -209,9 +267,14 @@ with st.expander("🔧 Vollständiger Vergleich aller drei Verfahren", expanded=
     for tab, label in zip(tabs, [NAIVE_LABEL, SIMPLEX_LABEL, REFERENCE_LABEL]):
         with tab:
             st.plotly_chart(
-                sankey_figure(instance, results[label]["flow"], f"Warenfluss – {label}"),
+                sankey_figure(instance, results[label]["flow"], f"Warenfluss – {label} (Periode {shown_period + 1})", period=shown_period),
                 use_container_width=True, key=f"sankey_{label}",
             )
+            if instance.n_periods > 1:
+                st.plotly_chart(
+                    inventory_figure(instance, results[label]["flow"], f"Lagerbestand über die Zeit – {label}"),
+                    use_container_width=True, key=f"inventory_{label}",
+                )
             st.plotly_chart(
                 utilization_figure(instance, results[label]["flow"], f"Kapazitätsauslastung – {label}"),
                 use_container_width=True, key=f"util_{label}",
@@ -280,10 +343,35 @@ Laufzeitvergleich ist bewusst Teil der Demo: eine industrielle C++-Implementieru
 Jahrzehnten an Feintuning ist schneller als eine didaktische Python-Neuimplementierung -
 Korrektheit lässt sich damit unabhängig von Performance zeigen.
 
+**Mehrperioden-Erweiterung (Regler "Anzahl Perioden"):** Ab zwei Perioden wird das
+Netzwerk **zeit-expandiert**: Werke, DC-Ein-/Ausgänge und Filialen werden je Periode
+dupliziert, Produktions- und Durchsatzkapazität gelten dann als **Pro-Periode-Grenzen**
+statt als Summe über den ganzen Horizont. Die einzige echte neue Kante ist eine
+**Lagerhaltungskante** von einem DC-Ausgang der Periode $t$ zum selben DC-Ausgang der
+Periode $t{+}1$: Bestand, der ankommt, aber nicht sofort an eine Filiale weitergeht,
+kann zu Lagerhaltungskosten mitgenommen werden, begrenzt durch die Lagerkapazität - ganz
+ohne neue Knotentypen, nur eine zusätzliche Kante je DC und Periodenübergang. SRC/SINK
+bleiben bewusst EIN einziger Knoten über den ganzen Horizont (reine Ausgleichsknoten,
+keine physische Position). Der Netzwerksimplex selbst braucht dafür **keine einzige
+Codezeile Änderung** - er sieht nur ein größeres, aber strukturell identisches
+Min-Cost-Flow-Problem.
+
+Der eigentliche Witz der Erweiterung zeigt sich erst mit **Nachfrage-Saisonalität**
+(Regler "Nachfrage-Spitze"): Ist die Nachfrage über die Perioden hinweg flach, lohnt
+sich Lagerhaltung nie (Lagerhaltungskosten sind nie negativ) - das Modell reduziert sich
+dann von selbst auf $T$ unabhängige Ein-Perioden-Probleme, ganz ohne dass das explizit
+erzwungen werden müsste (siehe Test `test_flat_demand_across_periods_never_uses_inventory`
+in `tests/test_network_simplex.py`). Mit einer Nachfragespitze in der Mitte des
+Horizonts (Preset "Nachfragespitze") wird es interessant: die **myopische**
+"Unoptimiert"-Baseline plant nie vorausschauend Bestand auf (sie kennt in jeder Periode
+nur die aktuelle Route-Wahl, keine Lagerhaltungskante), während der Netzwerksimplex
+schon in den Vorperioden gezielt Bestand aufbaut, wenn das günstiger ist als Fehlmenge
+in der Spitzen-Periode - sichtbar im Diagramm "Lagerbestand über die Zeit" oben.
+
 **In einem echten Distributionsnetz** kämen weitere Nebenbedingungen dazu (z. B.
-Mindestbestellmengen, mehrere Produkte, mehrere Perioden mit Lagerbestand) - das
-Grundprinzip aus Knoten, Kanten, Kapazitäten und Kosten sowie der Netzwerksimplex als
-Lösungsverfahren bleiben aber dieselben.
+Mindestbestellmengen, mehrere Produkte, periodenabhängige Kosten) - das Grundprinzip aus
+Knoten, Kanten, Kapazitäten und Kosten sowie der Netzwerksimplex als Lösungsverfahren
+bleiben aber dieselben.
 """
     )
 
@@ -342,12 +430,32 @@ erhöht - die Kante, die dieses Minimum realisiert, verlässt den Baum (austrete
 Kante), $(u,v)$ tritt ein. Terminiert, wenn keine Nicht-Baum-Kante die
 Optimalitätsbedingung mehr verletzt.
 
-**Bezug zum Code:** `flow_network.py` baut Graph und Kapazitäten inkl. der beiden
-Modellierungs-Kniffe auf. `flow_network_simplex.py` setzt die Formeln oben 1:1 um -
-Big-M-Startlösung, Kreiserkennung über den nächsten gemeinsamen Vorfahren im Spannbaum,
-Pivot mit Bland's-Regel-ähnlichem Tie-Break zur Vermeidung von Zyklen bei degenerierten
-Pivotschritten. `flow_naive.py` implementiert die FCFS-Baseline, `flow_reference_solver.py`
-kapselt Google OR-Tools als unabhängige Gegenprobe.
+**Mehrperioden-Erweiterung als Zeit-Expansion:** Für $T$ Perioden $t \in \{0, \ldots,
+T{-}1\}$ wird jeder Werks-, DC-Ein-/Ausgangs- und Filial-Knoten dupliziert (Knoten
+$i@t$), Produktions- und Durchsatzkapazität gelten je Periode. Für ein DC $k$ mit
+Lagerkapazität $\bar{l}_k$ und Lagerhaltungskosten $h_k$ pro Einheit und Periode kommt
+je Periodenübergang eine Lagerhaltungskante hinzu:
+"""
+    )
+    st.latex(r"(k_{\text{out}}@t,\ k_{\text{out}}@(t{+}1)) \in E, \quad u = \bar{l}_k, \quad c = h_k \qquad t = 0, \ldots, T{-}2")
+    st.markdown("SRC und SINK bleiben dabei EIN Knoten über alle Perioden:")
+    st.latex(r"b_{\text{SRC}} = \sum_t \sum_s \text{demand}_{s,t}")
+    st.markdown(
+        r"""
+mit je einer Produktions- und Fehlmengen-Kante pro (Werk, Periode) bzw. (Filiale,
+Periode). Diese Erweiterung ändert nichts an der
+Optimalitätsbedingung oder der Pivot-Logik oben - der Netzwerksimplex behandelt sie als
+ein einziges, größeres Min-Cost-Flow-Problem auf einem größeren Graphen.
+
+**Bezug zum Code:** `flow_network.py` baut Graph und Kapazitäten inkl. der drei
+Modellierungs-Kniffe (Knotenkapazität, SRC/SINK-Ausgleich, Zeit-Expansion) auf.
+`flow_network_simplex.py` setzt die Formeln oben 1:1 um - Big-M-Startlösung,
+Kreiserkennung über den nächsten gemeinsamen Vorfahren im Spannbaum, Pivot mit
+Bland's-Regel-ähnlichem Tie-Break zur Vermeidung von Zyklen bei degenerierten
+Pivotschritten - unverändert für den Mehrperioden-Fall. `flow_naive.py` implementiert
+die FCFS-Baseline (im Mehrperioden-Fall myopisch, Periode für Periode ohne
+Lagerhaltungskante), `flow_reference_solver.py` kapselt Google OR-Tools als
+unabhängige Gegenprobe.
 
 **Quelle:** Ahuja, R. K., Magnanti, T. L., Orlin, J. B. (1993). *Network Flows: Theory,
 Algorithms, and Applications.* Prentice Hall - Kapitel 11 (Network Simplex Algorithm).

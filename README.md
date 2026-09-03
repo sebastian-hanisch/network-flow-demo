@@ -39,19 +39,31 @@ Drei Verfahren im direkten Vergleich, alle auf demselben Netzwerk:
   geprüft, dass beide Lösungen exakt dieselben Gesamtkosten liefern, plus
   Laufzeitvergleich.
 
+**Mehrperioden-Erweiterung:** Ab zwei Perioden wird das Netzwerk zeit-expandiert - Werke,
+DC-Ein-/Ausgänge und Filialen werden je Periode dupliziert, Produktions- und
+Durchsatzkapazität gelten pro Periode. Verteilzentren können über eine zusätzliche
+Lagerhaltungskante (Lagerhaltungskosten, Lagerkapazität) Bestand von einer Periode in die
+nächste mitnehmen. Der Netzwerksimplex selbst braucht dafür keine Änderung - er sieht nur
+ein größeres, strukturell identisches Min-Cost-Flow-Problem. Bei flacher Nachfrage über
+alle Perioden lohnt sich Lagerhaltung nie und das Modell reduziert sich von selbst auf T
+unabhängige Ein-Perioden-Probleme; mit einer Nachfrage-Saisonalität (Regler
+"Nachfrage-Spitze", Preset "Nachfragespitze") baut der Netzwerksimplex sichtbar Bestand
+vor der Spitzen-Periode auf, während die myopische FCFS-Baseline nie vorausschauend plant.
+
 ## Methodik
 
 - Zufallsnetzwerk aus Werken (Produktionskosten/-kapazität), Verteilzentren
   (Umschlagkosten/-durchsatz) und Filialen (feste Nachfrage), Transportkosten
   proportional zur euklidischen Distanz - Seed-gesteuert und per Permalink
   reproduzierbar.
-- Drei Beispielszenarien: Normalfall, DC-Engpass (erzwingt Notbeschaffung) und Knappe
-  Werkskapazität (zeigt hier den größten Koordinationsgewinn ggü. der FCFS-Baseline).
-- Sankey-Flussdiagramm je Verfahren, Kostenaufschlüsselung (Produktion/Umschlag/
-  Transport/Fehlmenge), Kapazitätsauslastung je Werk/DC, Laufzeitvergleich, PDF-Export,
-  Permalink.
+- Vier Beispielszenarien: Normalfall, DC-Engpass (erzwingt Notbeschaffung), Knappe
+  Werkskapazität (größter Koordinationsgewinn ggü. der FCFS-Baseline) und Nachfragespitze
+  (Mehrperioden-Szenario mit Lagerhaltung vor einer Nachfrage-Spitze).
+- Sankey-Flussdiagramm je Verfahren und Periode, Lagerbestand-über-Zeit-Diagramm
+  (Mehrperioden-Fall), Kostenaufschlüsselung (Produktion/Umschlag/Transport/Lagerhaltung/
+  Fehlmenge), Kapazitätsauslastung je Werk/DC, Laufzeitvergleich, PDF-Export, Permalink.
 - Korrektheits-Check bei jedem Szenario-Wechsel: eigener Netzwerksimplex vs. OR-Tools
-  müssen dieselben Gesamtkosten liefern.
+  müssen dieselben Gesamtkosten liefern - auch im Mehrperioden-Fall.
 
 ## Dateistruktur
 
@@ -59,16 +71,16 @@ Drei Verfahren im direkten Vergleich, alle auf demselben Netzwerk:
 |---|---|
 | `app.py` | Streamlit-Hauptablauf (Sidebar, Primäransicht, Tabs) |
 | `flow_constants.py` | Default-/Grenzwerte, Beispielszenarien |
-| `flow_network.py` | Baut die ProblemInstance (Knoten, Kanten, Kapazitäten, Kosten) inkl. der beiden Modellierungs-Kniffe |
-| `flow_scenario.py` | Zufällige, Seed-gesteuerte Szenariogenerierung |
-| `flow_network_simplex.py` | Eigene Netzwerksimplex-Implementierung (Kernstück) |
-| `flow_naive.py` | FCFS-Baseline (je Filiale güns­tigste verfügbare Route) |
+| `flow_network.py` | Baut die ProblemInstance (Knoten, Kanten, Kapazitäten, Kosten) inkl. der drei Modellierungs-Kniffe (Knotenkapazität, SRC/SINK-Ausgleich, Zeit-Expansion) |
+| `flow_scenario.py` | Zufällige, Seed-gesteuerte Szenariogenerierung inkl. Nachfrage-Saisonalitätskurve |
+| `flow_network_simplex.py` | Eigene Netzwerksimplex-Implementierung (Kernstück), unverändert für den Mehrperioden-Fall |
+| `flow_naive.py` | FCFS-Baseline (je Filiale güns­tigste verfügbare Route; im Mehrperioden-Fall myopisch, Periode für Periode ohne Lagerhaltung) |
 | `flow_reference_solver.py` | Google OR-Tools `SimpleMinCostFlow` als Cross-Check |
-| `flow_evaluation.py` | Kostenaufschlüsselung, Kapazitätsauslastung, Vergleichstabelle |
-| `flow_visualization.py` | Sankey-Diagramm, Kostenaufschlüsselung, Auslastung, Laufzeitvergleich (Plotly) |
-| `flow_pdf_export.py` | PDF-Distributionsplan |
+| `flow_evaluation.py` | Kostenaufschlüsselung, Kapazitätsauslastung, Lagerbestand je Periode, Vergleichstabelle |
+| `flow_visualization.py` | Sankey-Diagramm je Periode, Lagerbestand-über-Zeit, Kostenaufschlüsselung, Auslastung, Laufzeitvergleich (Plotly) |
+| `flow_pdf_export.py` | PDF-Distributionsplan (mit Periodenspalte im Mehrperioden-Fall) |
 | `flow_presets.py` | Beispielszenarien, Permalink-Logik (`SettingSpec`-Pattern) |
-| `tests/` | Netzwerkaufbau-Korrektheit, Netzwerksimplex vs. OR-Tools auf Zufallsinstanzen (inkl. Engpass-Szenario), Flusserhaltung/Kapazitätseinhaltung für beide Solver, Iterationsgrenze |
+| `tests/` | Netzwerkaufbau-Korrektheit (Ein- und Mehrperioden-Fall), Netzwerksimplex vs. OR-Tools auf Zufallsinstanzen (inkl. Engpass- und Nachfragespitze-Szenarien), Flusserhaltung/Kapazitätseinhaltung für beide Solver, Iterationsgrenze, Lagerhaltungs-Eigenschaften (myopische Baseline nutzt sie nie, flache Nachfrage löst sie nie aus) |
 
 ## Lokal ausführen
 

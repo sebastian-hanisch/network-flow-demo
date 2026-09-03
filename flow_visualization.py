@@ -1,22 +1,33 @@
-"""Plotly-Visualisierungen für die Distributionsnetzwerk-Demo: Sankey-Flussdiagramm,
-Kostenaufschlüsselung, Kapazitätsauslastung, Laufzeitvergleich."""
+"""Plotly-Visualisierungen für die Distributionsnetzwerk-Demo: Sankey-Flussdiagramm
+(je Periode), Kostenaufschlüsselung, Kapazitätsauslastung, Laufzeitvergleich,
+Lagerbestand über die Zeit (Mehrperioden-Fall)."""
 
 import plotly.graph_objects as go
 
 import flow_constants as C
-from flow_evaluation import KIND_LABELS, cost_breakdown, dc_utilization, plant_utilization
-from flow_network import dc_in, dc_out
+from flow_evaluation import KIND_LABELS, cost_breakdown, dc_utilization, inventory_by_period, plant_utilization
+from flow_network import dc_in, dc_out, node_name
 
 
-def sankey_figure(instance, flow, title):
-    dc_in_to_dc = {dc_in(dc): dc for dc in instance.dcs}
-    dc_out_to_dc = {dc_out(dc): dc for dc in instance.dcs}
+def sankey_figure(instance, flow, title, period=0):
+    """Warenfluss-Diagramm für EINE Periode (Default: Periode 0 - im Ein-Perioden-Fall
+    die einzige, im Mehrperioden-Fall über den period-Parameter wählbar). Die
+    Lagerhaltungskante taucht hier bewusst nicht auf - sie verbindet zwei
+    verschiedene Perioden und passt nicht in die Momentaufnahme einer einzelnen
+    Periode; siehe stattdessen inventory_figure()."""
+    n = instance.n_periods
+    dc_in_to_dc = {dc_in(dc, period, n): dc for dc in instance.dcs}
+    dc_out_to_dc = {dc_out(dc, period, n): dc for dc in instance.dcs}
+    plant_node_to_base = {node_name(p, period, n): p for p in instance.plants}
+    store_node_to_base = {node_name(s, period, n): s for s in instance.stores}
 
-    has_shortfall = any(flow.get(a.idx, 0.0) > 1e-6 for a in instance.arcs if a.kind == "fehlmenge")
+    has_shortfall = any(
+        flow.get(a.idx, 0.0) > 1e-6 for a in instance.arcs if a.kind == "fehlmenge" and a.period == period
+    )
     nodes = list(instance.plants) + list(instance.dcs) + list(instance.stores)
     if has_shortfall:
         nodes = nodes + ["Notbeschaffung"]
-    idx_of = {n: i for i, n in enumerate(nodes)}
+    idx_of = {n_: i for i, n_ in enumerate(nodes)}
     colors = (
         [C.COLOR_PLANT] * len(instance.plants)
         + [C.COLOR_DC] * len(instance.dcs)
@@ -26,22 +37,24 @@ def sankey_figure(instance, flow, title):
 
     link_source, link_target, link_value, link_color = [], [], [], []
     for a in instance.arcs:
+        if a.period != period:
+            continue
         f = flow.get(a.idx, 0.0)
         if f <= 1e-6:
             continue
         if a.kind == "transport_werk_dc":
-            link_source.append(idx_of[a.tail])
+            link_source.append(idx_of[plant_node_to_base[a.tail]])
             link_target.append(idx_of[dc_in_to_dc[a.head]])
             link_value.append(f)
             link_color.append("rgba(37,99,235,0.35)")
         elif a.kind == "transport_dc_filiale":
             link_source.append(idx_of[dc_out_to_dc[a.tail]])
-            link_target.append(idx_of[a.head])
+            link_target.append(idx_of[store_node_to_base[a.head]])
             link_value.append(f)
             link_color.append("rgba(15,118,110,0.35)")
         elif a.kind == "fehlmenge":
             link_source.append(idx_of["Notbeschaffung"])
-            link_target.append(idx_of[a.head])
+            link_target.append(idx_of[store_node_to_base[a.head]])
             link_value.append(f)
             link_color.append("rgba(220,38,38,0.45)")
 
@@ -54,16 +67,40 @@ def sankey_figure(instance, flow, title):
     return fig
 
 
+def inventory_figure(instance, flow, title):
+    """Gestapelte Fläche: wie viel Bestand liegt am Übergang in jede Periode je DC
+    im Lager - macht sichtbar, WANN im Zeitverlauf Bestand für eine spätere
+    Nachfragespitze aufgebaut wird. Nur sinnvoll für n_periods > 1."""
+    rows = inventory_by_period(instance, flow)
+    fig = go.Figure()
+    for dc in instance.dcs:
+        dc_rows = sorted((r for r in rows if r["DC"] == dc), key=lambda r: r["Periode"])
+        periods = [0] + [r["Periode"] for r in dc_rows]
+        values = [0.0] + [r["Lagerbestand"] for r in dc_rows]
+        fig.add_scatter(
+            x=periods, y=values, mode="lines+markers", name=dc,
+            stackgroup="inventar", line=dict(width=1.5),
+        )
+    fig.update_layout(
+        title=title, xaxis_title="Periode", yaxis_title="Lagerbestand (Einheiten)",
+        height=350, legend=dict(orientation="h", y=1.15),
+        xaxis=dict(tickmode="linear", tick0=0, dtick=1),
+    )
+    return fig
+
+
 def cost_breakdown_figure(instance, results):
     labels = list(results.keys())
-    kinds = ["produktion", "umschlag", "transport_werk_dc", "transport_dc_filiale", "fehlmenge"]
+    kinds = ["produktion", "umschlag", "transport_werk_dc", "transport_dc_filiale", "lagerhaltung", "fehlmenge"]
     palette = {
         "produktion": "#2563eb", "umschlag": "#0f766e", "transport_werk_dc": "#60a5fa",
-        "transport_dc_filiale": "#5eead4", "fehlmenge": "#dc2626",
+        "transport_dc_filiale": "#5eead4", "lagerhaltung": C.COLOR_INVENTORY, "fehlmenge": "#dc2626",
     }
     fig = go.Figure()
     for k in kinds:
         ys = [cost_breakdown(instance, results[label]["flow"])[0].get(k, 0.0) for label in labels]
+        if all(abs(y) < 1e-9 for y in ys):
+            continue
         fig.add_bar(name=KIND_LABELS[k], x=labels, y=ys, marker_color=palette[k])
     fig.update_layout(
         barmode="stack", title="Kostenaufschlüsselung je Verfahren", yaxis_title="€",
