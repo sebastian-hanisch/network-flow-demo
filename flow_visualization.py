@@ -86,6 +86,11 @@ def inventory_figure(instance, flow, title):
         height=350, legend=dict(orientation="h", y=1.15),
         xaxis=dict(tickmode="linear", tick0=0, dtick=1),
     )
+    # fixedrange auf beiden Achsen: verhindert Pinch-Zoom/Drag-Pan im Chart,
+    # damit auf Touch-Geräten stattdessen die Seite normal gescrollt wird
+    # (Hover-Tooltips bleiben davon unberührt).
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
     return fig
 
 
@@ -106,6 +111,8 @@ def cost_breakdown_figure(instance, results):
         barmode="stack", title="Kostenaufschlüsselung je Verfahren", yaxis_title="€",
         height=420, legend=dict(orientation="h", y=1.15),
     )
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
     return fig
 
 
@@ -126,6 +133,8 @@ def utilization_figure(instance, flow, title):
         title=title, yaxis_title="Auslastung (%)", yaxis_range=[0, 118], height=380,
         legend=dict(orientation="h", y=1.15),
     )
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
     return fig
 
 
@@ -135,4 +144,6 @@ def runtime_figure(results):
     colors = [C.COLOR_NAIVE, C.COLOR_OPTIMAL, C.COLOR_REFERENCE][: len(labels)]
     fig = go.Figure(go.Bar(x=labels, y=ys, marker_color=colors, text=[f"{y:.2f} ms" for y in ys], textposition="outside"))
     fig.update_layout(title="Laufzeit je Verfahren (log-Skala)", yaxis_title="ms", yaxis_type="log", height=350)
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
     return fig
