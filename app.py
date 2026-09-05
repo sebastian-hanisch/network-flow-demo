@@ -232,13 +232,13 @@ else:
 
 st.plotly_chart(
     sankey_figure(instance, simplex["flow"], f"Warenfluss – {SIMPLEX_LABEL} (Periode {shown_period + 1})", period=shown_period),
-    use_container_width=True,
+    use_container_width=True, key=f"sankey_primary_{shown_period}",
 )
 
 if instance.n_periods > 1:
     st.plotly_chart(
         inventory_figure(instance, simplex["flow"], f"Lagerbestand über die Zeit – {SIMPLEX_LABEL}"),
-        use_container_width=True,
+        use_container_width=True, key="inventory_primary",
     )
     st.caption(
         "Bestand, den ein Verteilzentrum von einer Periode in die nächste mitnimmt - sichtbar wird, "
@@ -267,9 +267,9 @@ Gap, nur die eine globale Optimallösung).
 
 col_a, col_b = st.columns(2)
 with col_a:
-    st.plotly_chart(cost_breakdown_figure(instance, results), use_container_width=True)
+    st.plotly_chart(cost_breakdown_figure(instance, results), use_container_width=True, key="cost_breakdown")
 with col_b:
-    st.plotly_chart(runtime_figure(results), use_container_width=True)
+    st.plotly_chart(runtime_figure(results), use_container_width=True, key="runtime")
 
 with st.expander("🔧 Vollständiger Vergleich aller drei Verfahren", expanded=False):
     st.dataframe(pd.DataFrame(comparison_rows(instance, results)), use_container_width=True, hide_index=True)
