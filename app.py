@@ -98,25 +98,25 @@ st.caption("🎯 Schnellstart – ein Beispielszenario laden:")
 preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
 with preset_col1:
     st.button(
-        "🏭 Normalfall", use_container_width=True,
+        "🏭 Normalfall", width="stretch",
         on_click=apply_preset, args=("Normalfall",),
         help="Ausreichend Kapazität überall - das Netzwerk hat echte Routing-Wahlfreiheit.",
     )
 with preset_col2:
     st.button(
-        "🚧 DC-Engpass", use_container_width=True,
+        "🚧 DC-Engpass", width="stretch",
         on_click=apply_preset, args=("DC-Engpass",),
         help="Verteilzentren stark gedrosselt - erzwingt teilweise Notbeschaffung (Fehlmenge).",
     )
 with preset_col3:
     st.button(
-        "🏗️ Knappe Werkskapazität", use_container_width=True,
+        "🏗️ Knappe Werkskapazität", width="stretch",
         on_click=apply_preset, args=("Knappe Werkskapazität",),
         help="Wenig Produktionskapazität bei wenigen Werken - der Fehlmengen-Mechanismus greift hier anders als beim DC-Engpass.",
     )
 with preset_col4:
     st.button(
-        "📈 Nachfragespitze", use_container_width=True,
+        "📈 Nachfragespitze", width="stretch",
         on_click=apply_preset, args=("Nachfragespitze",),
         help="Mehrperioden-Szenario mit einer Nachfrage-Spitze in der Mitte des Planungshorizonts - zeigt, ob/wie Lagerhaltung sich lohnt.",
     )
@@ -145,7 +145,7 @@ with st.sidebar:
     seed_lo, seed_hi = bounds("seed_input")
     seed = st.number_input("Zufalls-Seed", min_value=seed_lo, max_value=seed_hi, step=1, key="seed_input")
     st.button(
-        "🎲 Neues Zufallsnetzwerk generieren", use_container_width=True, on_click=randomize_seed,
+        "🎲 Neues Zufallsnetzwerk generieren", width="stretch", on_click=randomize_seed,
         help="Würfelt einen neuen Zufalls-Seed für Positionen, Kosten und Kapazitäten.",
     )
 
@@ -232,13 +232,13 @@ else:
 
 st.plotly_chart(
     sankey_figure(instance, simplex["flow"], f"Warenfluss – {SIMPLEX_LABEL} (Periode {shown_period + 1})", period=shown_period),
-    use_container_width=True, key=f"sankey_primary_{shown_period}",
+    width="stretch", key=f"sankey_primary_{shown_period}",
 )
 
 if instance.n_periods > 1:
     st.plotly_chart(
         inventory_figure(instance, simplex["flow"], f"Lagerbestand über die Zeit – {SIMPLEX_LABEL}"),
-        use_container_width=True, key="inventory_primary",
+        width="stretch", key="inventory_primary",
     )
     st.caption(
         "Bestand, den ein Verteilzentrum von einer Periode in die nächste mitnimmt - sichtbar wird, "
@@ -267,28 +267,28 @@ Gap, nur die eine globale Optimallösung).
 
 col_a, col_b = st.columns(2)
 with col_a:
-    st.plotly_chart(cost_breakdown_figure(instance, results), use_container_width=True, key="cost_breakdown")
+    st.plotly_chart(cost_breakdown_figure(instance, results), width="stretch", key="cost_breakdown")
 with col_b:
-    st.plotly_chart(runtime_figure(results), use_container_width=True, key="runtime")
+    st.plotly_chart(runtime_figure(results), width="stretch", key="runtime")
 
 with st.expander("🔧 Vollständiger Vergleich aller drei Verfahren", expanded=False):
-    st.dataframe(pd.DataFrame(comparison_rows(instance, results)), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(comparison_rows(instance, results)), width="stretch", hide_index=True)
 
     tabs = st.tabs([NAIVE_LABEL, SIMPLEX_LABEL, REFERENCE_LABEL])
     for tab, label in zip(tabs, [NAIVE_LABEL, SIMPLEX_LABEL, REFERENCE_LABEL]):
         with tab:
             st.plotly_chart(
                 sankey_figure(instance, results[label]["flow"], f"Warenfluss – {label} (Periode {shown_period + 1})", period=shown_period),
-                use_container_width=True, key=f"sankey_{label}",
+                width="stretch", key=f"sankey_{label}",
             )
             if instance.n_periods > 1:
                 st.plotly_chart(
                     inventory_figure(instance, results[label]["flow"], f"Lagerbestand über die Zeit – {label}"),
-                    use_container_width=True, key=f"inventory_{label}",
+                    width="stretch", key=f"inventory_{label}",
                 )
             st.plotly_chart(
                 utilization_figure(instance, results[label]["flow"], f"Kapazitätsauslastung – {label}"),
-                use_container_width=True, key=f"util_{label}",
+                width="stretch", key=f"util_{label}",
             )
 
 st.markdown("---")
