@@ -36,8 +36,8 @@ Drei Verfahren im direkten Vergleich, alle auf demselben Netzwerk:
   Simplex-Tableau zu führen. Startlösung über eine künstliche Wurzel mit Big-M-Kosten
   (Phase 1), danach Pivotisieren bis alle Optimalitätsbedingungen (reduzierte Kosten je
   nach Schrankenstatus) erfüllt sind.
-- **Referenz (Google OR-Tools):** `SimpleMinCostFlow` (ebenfalls Netzwerksimplex,
-  industriell gehärtet, C++) als unabhängige Gegenprobe - bei jedem Szenario wird
+- **Referenz (Google OR-Tools):** `SimpleMinCostFlow` (ein anderes Verfahren: Cost-Scaling-
+  Push-Relabel, industriell gehärtet, C++) als unabhängige Gegenprobe - bei jedem Szenario wird
   geprüft, dass beide Lösungen exakt dieselben Gesamtkosten liefern, plus
   Laufzeitvergleich.
 

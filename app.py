@@ -346,8 +346,9 @@ dieses Workspace. Frühe Filialen "verbrauchen" dabei möglicherweise güns­tig
 die für später bediente Filialen wirtschaftlicher gewesen wäre - eine rein lokale,
 unkoordinierte Entscheidung je Filiale statt einer netzweiten Abstimmung.
 
-**Referenzlösung:** Google OR-Tools' `SimpleMinCostFlow` (ebenfalls eine
-Netzwerksimplex-Implementierung, industriell gehärtet und in C++ geschrieben) löst
+**Referenzlösung:** Google OR-Tools' `SimpleMinCostFlow` (ein anderes Verfahren
+als der Netzwerksimplex: Cost-Scaling-Push-Relabel, industriell gehärtet und in C++
+geschrieben) löst
 dasselbe Problem unabhängig - bei jedem Szenario-Wechsel wird geprüft, dass beide
 Lösungen exakt dieselben Gesamtkosten liefern (grüne Erfolgsmeldung oben). Der
 Laufzeitvergleich ist bewusst Teil der Demo: eine industrielle C++-Implementierung mit
