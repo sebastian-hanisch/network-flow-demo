@@ -147,3 +147,52 @@ def runtime_figure(results):
     fig.update_xaxes(fixedrange=True)
     fig.update_yaxes(fixedrange=True)
     return fig
+
+
+def rules_figure(rows):
+    """Abstand zum Optimum in Prozent je Verfahren (Praxisregeln grau, exakte Löser blau)."""
+    fig = go.Figure(go.Bar(
+        y=[r["Verfahren"] for r in reversed(rows)], x=[r["Abstand zum Optimum (%)"] for r in reversed(rows)], orientation="h",
+        marker_color=[C.COLOR_NAIVE if r["Art"] == "Praxisregel" else C.COLOR_OPTIMAL for r in reversed(rows)],
+        text=[f"{r['Abstand zum Optimum (%)']:.1f} %".replace(".", ",") for r in reversed(rows)], textposition="auto",
+    ))
+    fig.update_layout(title="Mehrkosten gegenüber dem Optimum", height=300, margin=dict(l=10, r=10, t=40, b=10), xaxis_title="% über den optimalen Gesamtkosten")
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+    return fig
+
+
+def scenario_figure(row_a, row_b, label_a, label_b):
+    """Kostenaufschlüsselung je Art für zwei Szenarien nebeneinander (gestapelt)."""
+    kinds = [k for k in KIND_LABELS if k != "nachfrage" and (row_a["by_kind"].get(k, 0.0) > 1e-6 or row_b["by_kind"].get(k, 0.0) > 1e-6)]
+    palette = {"produktion": "#2563eb", "umschlag": "#0f766e", "transport_werk_dc": "#7c3aed", "transport_dc_filiale": "#64748b", "fehlmenge": "#dc2626", "lagerhaltung": "#d97706"}
+    fig = go.Figure()
+    for k in kinds:
+        fig.add_trace(go.Bar(x=[label_a, label_b], y=[row_a["by_kind"].get(k, 0.0), row_b["by_kind"].get(k, 0.0)], name=KIND_LABELS[k], marker_color=palette.get(k)))
+    fig.update_layout(barmode="stack", title="Kostenaufschlüsselung: Ausgangslage gegen Variante", height=340, margin=dict(l=10, r=10, t=40, b=10), yaxis_title="Gesamtkosten (€)", legend=dict(orientation="h", y=-0.25))
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+    return fig
+
+
+def bottleneck_figure(rows):
+    """Wert einer weiteren Einheit Kapazität je volle Kante (€ je Einheit und Periode)."""
+    rows = list(reversed(rows))
+    fig = go.Figure(go.Bar(y=[r["label"] for r in rows], x=[r["value"] for r in rows], orientation="h", marker_color=C.COLOR_SHORTFALL,
+                           text=[f"{r['value']:.1f} €".replace(".", ",") for r in rows], textposition="auto"))
+    fig.update_layout(title="Engpässe: was spart eine weitere Einheit Kapazität?", height=max(260, 34 * len(rows) + 80), margin=dict(l=10, r=10, t=40, b=10), xaxis_title="€ je zusätzliche Einheit")
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+    return fig
+
+
+def scaling_figure(rows):
+    """Laufzeit je Verfahren gegen die Netzgröße (Kanten), logarithmisch."""
+    fig = go.Figure()
+    colors = {"FCFS": C.COLOR_NAIVE, "Netzwerksimplex (eigen)": C.COLOR_OPTIMAL, "HiGHS-LP": "#0f766e", "OR-Tools": C.COLOR_REFERENCE}
+    for name in ("FCFS", "Netzwerksimplex (eigen)", "HiGHS-LP", "OR-Tools"):
+        fig.add_trace(go.Scatter(x=[r["arcs"] for r in rows], y=[r["runtime_ms"][name] for r in rows], mode="lines+markers", name=name, line=dict(color=colors[name])))
+    fig.update_layout(title="Laufzeit gegen Netzgröße", height=340, margin=dict(l=10, r=10, t=40, b=10), xaxis_title="Kanten", yaxis_title="Laufzeit (ms)", legend=dict(orientation="h", y=-0.25))
+    fig.update_xaxes(type="log", fixedrange=True)
+    fig.update_yaxes(type="log", fixedrange=True)
+    return fig

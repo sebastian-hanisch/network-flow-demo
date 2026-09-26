@@ -18,12 +18,27 @@ eine unkoordinierte Disposition plant nicht vorausschauend Bestand für eine kü
 Nachfragespitze auf, sondern reagiert immer nur auf die aktuelle Periode.
 """
 
-from flow_network import dc_in, dc_out, node_name
+from flow_network import dc_in, dc_out, distance, node_name
 
 EPS = 1e-9
 
 
-def solve_naive(instance):
+RULES = {
+    "fcfs": ("given", "cheapest"),
+    "largest_first": ("demand_desc", "cheapest"),
+    "regional": ("given", "regional"),
+}
+RULE_LABELS = {
+    "fcfs": "Unoptimiert (FCFS je Filiale)",
+    "largest_first": "Größte Nachfrage zuerst",
+    "regional": "Regional (nächstes DC, dann billigstes Werk)",
+}
+
+
+def solve_naive(instance, order="given", rule="cheapest"):
+    """`order`: 'given' (Filialen in der Reihenfolge der Instanz) oder 'demand_desc' (je Periode die Filiale mit der größten Nachfrage zuerst). `rule`: 'cheapest' (die billigste noch freie komplette Route über alle Werke und DCs)
+    oder 'regional' (das der Filiale nächste DC mit noch freier Route, dort das billigste Werk - die übliche zweistufige Praxisregel). Standard = die FCFS-Baseline der Demo."""
+    assert order in ("given", "demand_desc") and rule in ("cheapest", "regional")
     arc_by_pair = {(a.tail, a.head): a for a in instance.arcs}
     remaining = {a.idx: a.capacity for a in instance.arcs}
     flow = {a.idx: 0.0 for a in instance.arcs}
@@ -38,26 +53,38 @@ def solve_naive(instance):
             arc_by_pair[(dc_out_t, s_t)],
         ]
 
+    def cheapest_route(s, t, dcs):
+        best, best_cost = None, None
+        for p in instance.plants:
+            for dc in dcs:
+                arcs = route_arcs(p, dc, s, t)
+                if min(remaining[a.idx] for a in arcs) <= EPS:
+                    continue
+                cost = sum(a.cost for a in arcs)
+                if best_cost is None or cost < best_cost - 1e-9:
+                    best_cost, best = cost, arcs
+        return best
+
     for t in range(n):
-        for s in instance.stores:
+        stores = list(instance.stores)
+        if order == "demand_desc":
+            stores.sort(key=lambda s: (-instance.store_demand.get((s, t), 0.0), s))
+        for s in stores:
             s_t = node_name(s, t, n)
             need = instance.store_demand.get((s, t), 0.0)
             demand_arc = arc_by_pair[(s_t, "SINK")]
             shortfall_arc = arc_by_pair[("SRC", s_t)]
+            dcs_by_distance = sorted(instance.dcs, key=lambda d: (distance(instance.dc_pos[d], instance.store_pos[s]), d))
 
             while need > EPS:
-                best = None
-                best_cost = None
-                for p in instance.plants:
-                    for dc in instance.dcs:
-                        arcs = route_arcs(p, dc, s, t)
-                        available = min(remaining[a.idx] for a in arcs)
-                        if available <= EPS:
-                            continue
-                        cost = sum(a.cost for a in arcs)
-                        if best_cost is None or cost < best_cost - 1e-9:
-                            best_cost = cost
-                            best = arcs
+                if rule == "cheapest":
+                    best = cheapest_route(s, t, instance.dcs)
+                else:
+                    best = None
+                    for dc in dcs_by_distance:
+                        best = cheapest_route(s, t, [dc])
+                        if best is not None:
+                            break
                 if best is None:
                     break
                 amount = min(min(remaining[a.idx] for a in best), need)
@@ -78,3 +105,9 @@ def solve_naive(instance):
 
     cost = sum(a.cost * flow[a.idx] for a in instance.arcs)
     return flow, cost
+
+
+def solve_rule(instance, name):
+    """Praxisregel nach Namen ('fcfs', 'largest_first', 'regional')."""
+    order, rule = RULES[name]
+    return solve_naive(instance, order=order, rule="cheapest" if rule == "cheapest" else "regional")

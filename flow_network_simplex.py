@@ -44,7 +44,10 @@ ARTIFICIAL_CAPACITY = 1e12
 
 
 class NetworkSimplexResult:
-    def __init__(self, flow, cost, iterations, feasible, artificial_flow):
+    def __init__(self, flow, cost, iterations, feasible, artificial_flow, potentials=None, reduced_costs=None, status=None):
+        self.potentials = potentials or {}  # Knotenpotentiale der Schluss-Basis (Konvention: pi(Kopf) = pi(Schwanz) - Kosten auf Baumbögen)
+        self.reduced_costs = reduced_costs or {}  # dict: real Arc.idx -> reduzierte Kosten (0 auf Baumbögen); voller Bogen mit < 0: eine weitere Einheit Kapazität spart |Wert|
+        self.status = status or {}  # dict: real Arc.idx -> "T" (Baum), "L" (unten), "U" (oben)
         self.flow = flow  # dict: real Arc.idx -> Flusswert
         self.cost = cost  # Gesamtkosten über alle echten Bögen
         self.iterations = iterations
@@ -211,7 +214,9 @@ def solve_network_simplex(instance, max_iterations=None):
 
     real_flow = {idx: max(0.0, flow[idx]) for idx in real_arcs}
     cost = sum(real_arcs[idx].cost * real_flow[idx] for idx in real_arcs)
-    return NetworkSimplexResult(real_flow, cost, iterations, feasible, artificial_flow)
+    reduced = {idx: real_arcs[idx].cost - potential[real_arcs[idx].tail] + potential[real_arcs[idx].head] for idx in real_arcs}
+    status_final = {idx: ("T" if idx in tree_set else status[idx]) for idx in real_arcs}
+    return NetworkSimplexResult(real_flow, cost, iterations, feasible, artificial_flow, potentials=dict(potential), reduced_costs=reduced, status=status_final)
 
 
 def tree_adjacency_arc(parent, node):

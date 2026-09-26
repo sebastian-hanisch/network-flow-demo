@@ -67,6 +67,36 @@ vor der Spitzen-Periode auf, während die myopische FCFS-Baseline nie vorausscha
 - Korrektheits-Check bei jedem Szenario-Wechsel: eigener Netzwerksimplex vs. OR-Tools
   müssen dieselben Gesamtkosten liefern - auch im Mehrperioden-Fall.
 
+## Neu (2026-09-26): mehr Verfahren, Szenario-Vergleich, Schattenpreise
+
+Die Demo wurde stärker in Richtung Anwendung ausgebaut; alles ist additiv, die bisherigen Kennzahlen und Beispielszenarien sind unverändert. Die neuen Zahlen sind in `tests/test_claims.py` belegt (die vier Beispielszenarien, Normalfall = Seed 7).
+
+**Mehr Verfahren im Vergleich.** Neben der FCFS-Baseline zwei weitere Praxisregeln – **Größte Nachfrage zuerst** (je Periode die Filiale mit der größten Nachfrage zuerst) und **Regional** (das der Filiale nächste DC mit freier Route, dort das billigste Werk; die übliche zweistufige Regel) – und ein dritter exakter Löser: **HiGHS-LP** (`scipy.optimize.linprog`, ein allgemeines LP auf der Inzidenzmatrix, kein Netzwerkverfahren). Die drei exakten Löser (eigener Netzwerksimplex, OR-Tools, HiGHS) liefern in allen vier Beispielszenarien dieselben Kosten (OR-Tools rechnet mit auf 1e-4 gerundeten Kosten).
+Mehrkosten gegenüber dem Optimum (FCFS / Größte zuerst / Regional): Normalfall (43 852 €) **3,95 / 4,13 / 2,59 %**; DC-Engpass (68 043 €) 10,13 / **8,34** / 9,24 %; Knappe Werkskapazität (31 877 €) 28,07 / 28,80 / **26,15 %**; Nachfragespitze (197 481 €) **10,37** / 13,16 / 13,15 %. **Keine Regel gewinnt überall:** Regional gewinnt zweimal, Größte Nachfrage zuerst einmal, die billigste Route je Filiale (FCFS) einmal; alle liegen zwischen 2,6 und 28,8 % über dem Optimum.
+Ein Laufzeit-Experiment (3 Größenstufen bis 10 Werke, 14 DCs, 60 Filialen: 100 Knoten, 1 124 Kanten, 295 Simplex-Iterationen) zeigt: OR-Tools ist überall am schnellsten, der eigene Simplex wächst mit Iterationen mal Netzgröße (Baum wird je Iteration neu aufgebaut), HiGHS hat einen festen Startaufwand.
+
+**Szenario-Vergleich (What-if).** Aus dem Netz entsteht eine Variante (Verteilzentrum ausbauen, Werk schließen, Werkskapazität aller Werke ändern, Nachfrage ändern, Notbeschaffung verteuern); beide Szenarien werden exakt mit dem Netzwerksimplex gelöst und nebeneinander gestellt (Kosten, Fehlmenge, Kostenaufschlüsselung), optional mit Amortisation einer Investition.
+Normalfall (39 Einheiten Fehlmenge): **DC 1 um 50 % ausbauen spart 12 570 € (−28,7 %) und beseitigt die Fehlmenge**; Werk 1 schließen kostet +2 648 € (+6,0 %, Fehlmenge 46); Werkskapazität −20 % nur +114 € (+0,3 %, Fehlmenge unverändert); Nachfrage +20 % +25 049 € (+57,1 %, Fehlmenge 90); Notbeschaffung 100 % teurer +19 500 € = 39 mal 500 (die Fehlmenge bleibt).
+
+**Schattenpreise und Engpässe.** Der Netzwerksimplex liefert Potenziale und reduzierte Kosten; für jede volle Kante ist der Schattenpreis der Wert einer weiteren Einheit Kapazität. Normalfall: die drei größten sind Durchsatz-Engpässe der Verteilzentren – **DC 2 393,93 €, DC 3 380,00 €, DC 1 329,15 €** je Einheit –, danach Werk 3 → DC 1 mit 35,81 €. Sie liegen knapp unter den Strafkosten der Notbeschaffung (500 €) minus der Kosten der Route, die die zusätzliche Einheit nutzen würde, und nie darüber (in allen vier Szenarien unter 500 €).
+Gegenprobe: Kapazität + 1 und neu rechnen – bei **19 von 20** geprüften Engpässen (die fünf größten je Szenario) genau gleich; im DC-Engpass spart DC 1 nachgerechnet 345,43 € statt 351,28 € (die Basis wechselt). Knappe Werkskapazität: die Werke 343,24 / 340,29 / 316,82 €; Nachfragespitze: DC 1 in Periode 3 mit 367,38 €.
+
+**Was nicht wie erwartet ausfiel.**
+- **„Die billigste Route je Filiale (FCFS) ist die beste Praxisregel“ – widerlegt:** die einfache Regionalregel schlägt sie in zwei von vier Szenarien (zweimal um etwa 1 bis 2 Prozentpunkte); die beste Regel wechselt mit dem Szenario.
+- **„Schattenpreis mal Ausbau = Ersparnis“ – nur für die ersten Einheiten:** DC 1 um 50 % (101 auf 152 Einheiten) spart 12 570 €, das sind 246 € je zusätzliche Einheit, der Schattenpreis von DC 1 ist 329 €. Der Wert gilt nur, solange die Basis optimal bleibt.
+- **„20 % weniger Werkskapazität tut weh“ – im Normalfall kaum:** +0,3 %; der Engpass sind hier die Verteilzentren, nicht die Werke.
+
+## Dateien (Ergänzungen)
+
+| Datei | Inhalt |
+|---|---|
+| `flow_naive.py` | jetzt mit Reihenfolge und Routenregel als Parameter (Standard = FCFS unverändert), `solve_rule` für „Größte Nachfrage zuerst“ und „Regional“ |
+| `flow_lp_solver.py` | HiGHS-LP (`scipy`) als dritter exakter Löser |
+| `flow_variants.py` | Szenario-Varianten über `build_instance` (Ausbau, Schließung, Kapazität, Nachfrage, Strafkosten) |
+| `flow_network_simplex.py` | liefert zusätzlich Potenziale, reduzierte Kosten und Status der Basis |
+| `flow_evaluation.py` | Vergleichstabelle, Szenario-Kennzahlen, Engpassliste mit Gegenprobe |
+| `tests/test_rules.py`, `test_variants.py`, `test_shadow_prices.py`, `test_claims.py`, `test_app_sections.py` | Regeln und LP, Varianten, Schattenpreise, belegte Zahlen, neue App-Abschnitte |
+
 ## Dateistruktur
 
 | Datei | Inhalt |

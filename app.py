@@ -31,8 +31,9 @@ import streamlit as st
 
 import flow_constants as C
 import flow_scenario
-from flow_evaluation import comparison_rows, inventory_total, savings_pct, shortfall_total, total_cost
-from flow_naive import solve_naive
+from flow_evaluation import bottlenecks, comparison_rows, inventory_total, method_rows, savings_pct, scenario_row, shortfall_total, total_cost
+from flow_lp_solver import solve_lp
+from flow_naive import RULE_LABELS, solve_naive, solve_rule
 from flow_network_simplex import solve_network_simplex
 from flow_pdf_export import generate_distribution_plan_pdf
 from flow_presets import (
@@ -44,11 +45,15 @@ from flow_presets import (
     sync_query_params,
 )
 from flow_reference_solver import solve_reference
-from flow_visualization import cost_breakdown_figure, inventory_figure, runtime_figure, sankey_figure, utilization_figure
+from flow_variants import CHANGE_PCT, CHANGES, NEEDS_TARGET, describe, make_variant
+from flow_visualization import (
+    bottleneck_figure, cost_breakdown_figure, inventory_figure, rules_figure, runtime_figure, sankey_figure, scaling_figure, scenario_figure, utilization_figure,
+)
 
 NAIVE_LABEL = "Unoptimiert (FCFS je Filiale)"
 SIMPLEX_LABEL = "Netzwerksimplex (eigene Implementierung)"
 REFERENCE_LABEL = "Referenz (Google OR-Tools)"
+LP_LABEL = "HiGHS-LP (scipy)"
 
 
 @st.cache_data(show_spinner=False)
@@ -72,11 +77,52 @@ def _compute(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed, n_periods, 
         NAIVE_LABEL: dict(flow=naive_flow, cost=naive_cost, runtime=t1 - t0),
         SIMPLEX_LABEL: dict(
             flow=ns_result.flow, cost=ns_result.cost, runtime=t2 - t1,
-            iterations=ns_result.iterations, feasible=ns_result.feasible,
+            iterations=ns_result.iterations, feasible=ns_result.feasible, result=ns_result,
         ),
         REFERENCE_LABEL: dict(flow=ref_flow, cost=ref_cost, runtime=t3 - t2, feasible=ref_feasible),
     }
     return instance, results
+
+
+@st.cache_data(show_spinner=False)
+def _compute_extra(n_plants, n_dcs, n_stores, dc_scale, plant_scale, seed, n_periods, peak_multiplier):
+    """Zusätzliche Verfahren auf demselben Netz: zwei weitere Praxisregeln und der HiGHS-LP als dritter exakter Löser."""
+    instance = flow_scenario.generate_instance(
+        n_plants, n_dcs, n_stores, seed, dc_scale, plant_scale,
+        n_periods=n_periods, demand_peak_multiplier=peak_multiplier,
+    )
+    extra = {}
+    for name in ("largest_first", "regional"):
+        t0 = time.perf_counter()
+        flow, cost = solve_rule(instance, name)
+        extra[RULE_LABELS[name]] = dict(flow=flow, cost=cost, runtime=time.perf_counter() - t0, kind="Praxisregel")
+    t0 = time.perf_counter()
+    flow, cost, feasible = solve_lp(instance)
+    extra[LP_LABEL] = dict(flow=flow, cost=cost, runtime=time.perf_counter() - t0, kind="exakt", feasible=feasible)
+    return extra
+
+
+@st.cache_data(show_spinner=False)
+def _compute_scaling():
+    """Laufzeit und Iterationen gegen die Netzgröße: drei Größenstufen mit Seed 7."""
+    rows = []
+    for n_plants, n_dcs, n_stores in ((3, 3, 8), (6, 8, 25), (10, 14, 60)):
+        inst = flow_scenario.generate_instance(n_plants, n_dcs, n_stores, 7)
+        times = {}
+        t0 = time.perf_counter()
+        solve_naive(inst)
+        times["FCFS"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        ns = solve_network_simplex(inst)
+        times["Netzwerksimplex (eigen)"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        solve_lp(inst)
+        times["HiGHS-LP"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        solve_reference(inst)
+        times["OR-Tools"] = (time.perf_counter() - t0) * 1000
+        rows.append(dict(size=(n_plants, n_dcs, n_stores), nodes=len(inst.nodes), arcs=len(inst.arcs), iterations=ns.iterations, runtime_ms=times))
+    return rows
 
 
 st.set_page_config(page_title="Distributionsnetzwerk-Optimierung – Sebastian Hanisch", layout="wide")
@@ -290,6 +336,99 @@ with st.expander("🔧 Vollständiger Vergleich aller drei Verfahren", expanded=
                 utilization_figure(instance, results[label]["flow"], f"Kapazitätsauslastung – {label}"),
                 width="stretch", key=f"util_{label}",
             )
+
+st.markdown("---")
+st.subheader("🧮 Mehr Verfahren im Vergleich")
+st.markdown(
+    "Praxisregeln, die ohne netzweite Rechnung auskommen (drei Varianten), gegen drei **exakte** Löser mit unterschiedlichen Verfahren: den eigenen Netzwerksimplex, "
+    "OR-Tools (Cost Scaling) und HiGHS (allgemeines LP). Die exakten müssen dieselben Kosten liefern; der Abstand der Regeln zum Optimum ist das, was Koordination bringt."
+)
+extra = _compute_extra(n_plants, n_dcs, n_stores, dc_scale, plant_scale, int(seed), int(n_periods), peak_multiplier)
+method_table = method_rows(instance, results, extra)
+table = pd.DataFrame(method_table)
+table["Abstand zum Optimum (%)"] = table["Abstand zum Optimum (%)"].round(2)
+st.dataframe(table, width="stretch", hide_index=True)
+st.plotly_chart(rules_figure(method_table), width="stretch", key="rules_chart")
+exact_costs = [r["Gesamtkosten (€)"] for r in method_table if r["Art"] == "exakt"]
+if max(exact_costs) - min(exact_costs) <= max(1.0, 0.001 * min(exact_costs)):
+    st.success("✅ Alle drei exakten Löser (Netzwerksimplex, OR-Tools, HiGHS-LP) liefern dieselben Gesamtkosten.")
+else:
+    st.warning("⚠️ Die exakten Löser weichen voneinander ab - das sollte praktisch nicht vorkommen.")
+st.caption("Keine Praxisregel gewinnt überall: „Regional“ (das nächste DC, dann das billigste Werk) ist mal besser, mal schlechter als die billigste Route je Filiale; „größte Nachfrage zuerst“ hilft vor allem bei knappen DCs. Preset wechseln und vergleichen.")
+
+with st.expander("🔬 Laufzeit gegen Netzgröße", expanded=False):
+    st.caption("Drei Größenstufen (3 / 6 / 10 Werke, 3 / 8 / 14 DCs, 8 / 25 / 60 Filialen, Seed 7): Laufzeit der vier Verfahren und Simplex-Iterationen.")
+    if st.button("Größen durchrechnen (dauert einige Sekunden)", key="scaling_start"):
+        st.session_state["scaling_on"] = True
+    if st.session_state.get("scaling_on"):
+        with st.spinner("Rechne drei Netzgrößen..."):
+            scaling_rows = _compute_scaling()
+        st.plotly_chart(scaling_figure(scaling_rows), width="stretch", key="scaling_chart")
+        st.dataframe(pd.DataFrame([{
+            "Werke / DCs / Filialen": " / ".join(str(x) for x in r["size"]), "Knoten": r["nodes"], "Kanten": r["arcs"], "Simplex-Iterationen": r["iterations"],
+            **{f"{k} (ms)": round(v, 1) for k, v in r["runtime_ms"].items()},
+        } for r in scaling_rows]), width="stretch", hide_index=True)
+        st.caption("Der eigene Simplex baut den Baum in jeder Iteration neu auf (didaktisch, fehlerarm) und wächst deshalb mit Iterationen mal Netzgröße. OR-Tools (C++, Cost Scaling) ist auf allen Größen am schnellsten; HiGHS hat bei kleinen Netzen einen festen Startaufwand und holt bei größeren auf. Die Laufzeiten schwanken von Lauf zu Lauf, die Iterationen nicht. Korrektheit ist unabhängig von der Laufzeit geprüft.")
+
+st.markdown("---")
+st.subheader("🔀 Szenario-Vergleich: was wäre wenn?")
+st.markdown("Ein zweites Szenario aus demselben Netz: eine Änderung wählen, beide mit dem Netzwerksimplex lösen und nebeneinander stellen.")
+sc1, sc2, sc3 = st.columns(3)
+with sc1:
+    change = st.selectbox("Änderung", ["none"] + list(CHANGES), format_func=lambda k: "Kein Vergleich" if k == "none" else CHANGES[k], key="scenario_change")
+target = None
+pct = 0
+if change != "none":
+    if NEEDS_TARGET.get(change) == "dc":
+        with sc2:
+            target = st.selectbox("Verteilzentrum", instance.dcs, key="scenario_dc")
+    elif NEEDS_TARGET.get(change) == "plant":
+        with sc2:
+            target = st.selectbox("Werk", instance.plants, key="scenario_plant")
+    if CHANGE_PCT[change] is not None:
+        lo, hi, default = CHANGE_PCT[change]
+        with sc3:
+            pct = st.slider("Änderung in Prozent", lo, hi, default, step=10 if hi - lo >= 100 else 5, key=f"scenario_pct_{change}")
+if change == "none":
+    st.info("Eine Änderung wählen, um Ausgangslage und Variante zu vergleichen.")
+else:
+    variant = make_variant(instance, change, target, pct)
+    v_result = solve_network_simplex(variant)
+    row_a = scenario_row(instance, simplex["cost"], simplex["flow"])
+    row_b = scenario_row(variant, v_result.cost, v_result.flow)
+    delta = row_b["cost"] - row_a["cost"]
+    d_short = row_b["shortfall"] - row_a["shortfall"]
+    v1, v2, v3 = st.columns(3)
+    v1.metric("Gesamtkosten Ausgangslage", f"{row_a['cost']:,.0f} €")
+    v2.metric(f"Gesamtkosten: {describe(change, target, pct)}", f"{row_b['cost']:,.0f} €", delta=f"{delta:+,.0f} € ({delta / row_a['cost'] * 100:+.1f}%)" if row_a["cost"] else None, delta_color="inverse")
+    v3.metric("Fehlmenge", f"{row_b['shortfall']:.0f} Einheiten", delta=f"{d_short:+.0f} gegenüber {row_a['shortfall']:.0f}", delta_color="inverse")
+    st.plotly_chart(scenario_figure(row_a, row_b, "Ausgangslage", describe(change, target, pct)), width="stretch", key="scenario_chart")
+    invest = st.number_input("Einmalige Investition (€), z. B. für den Ausbau", min_value=0.0, value=0.0, step=1000.0, key="scenario_invest",
+                             help="Optional: wie viele Planungszeiträume die Einsparung braucht, um die Investition zu decken. Bei einer Verschlechterung gibt es keine Amortisation.")
+    if invest > 0:
+        if delta < 0:
+            st.success(f"Einsparung {-delta:,.0f} € je Planungszeitraum ({instance.n_periods} Periode{'n' if instance.n_periods > 1 else ''}): die Investition von {invest:,.0f} € amortisiert sich nach {invest / -delta:.1f} Planungszeiträumen.")
+        else:
+            st.warning("Die Variante spart nichts - keine Amortisation.")
+    st.caption("Der Vergleich rechnet beide Szenarien exakt neu (kein Schätzwert): die Kosten enthalten die Notbeschaffung zum Strafpreis. Ein Ausbau lohnt sich dort, wo Fehlmenge oder teure Ausweichrouten entstehen - siehe die Engpassliste unten.")
+
+st.markdown("---")
+st.subheader("🎯 Engpässe: was ist mehr Kapazität wert?")
+st.markdown(
+    "Aus den **Potenzialen** des Netzwerksimplex folgt für jede volle Kante ihr **Schattenpreis**: um wie viel die Gesamtkosten sinken, wenn eine Einheit mehr Kapazität zur Verfügung steht. "
+    "Die Liste ordnet die Engpässe nach diesem Wert; die fünf größten sind durch Nachrechnen (Kapazität + 1) geprüft."
+)
+bn_rows = bottlenecks(instance, simplex["result"], top=10, verify=5)
+if not bn_rows:
+    st.info("In dieser Lösung ist keine Kapazität voll ausgelastet - mehr Kapazität würde nichts sparen.")
+else:
+    st.plotly_chart(bottleneck_figure(bn_rows), width="stretch", key="bottleneck_chart")
+    st.dataframe(pd.DataFrame([{
+        "Engpass": r["label"], "Kapazität": r["capacity"], "Schattenpreis (€ je Einheit)": round(r["value"], 2),
+        "Nachgerechnet (€)": f"{r['recomputed']:.2f}" if "recomputed" in r else "–", "genau": ("ja" if r["exact"] else "darunter") if "exact" in r else "",
+    } for r in bn_rows]), width="stretch", hide_index=True)
+    st.caption("Ein hoher Schattenpreis heißt: hier wird Geld liegengelassen. Er liegt bei einem Durchsatz-Engpass knapp unter dem Strafpreis der Notbeschaffung minus der Kosten der Route, die die zusätzliche Einheit nutzen würde. "
+               "Er gilt nur, solange die Basis optimal bleibt - „darunter“ heißt, dass die Ersparnis der nächsten Einheit kleiner ist, weil sich die Lösung dabei umstellt.")
 
 st.markdown("---")
 
