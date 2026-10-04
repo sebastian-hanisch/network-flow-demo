@@ -146,7 +146,7 @@ with preset_col1:
     st.button(
         "🏭 Normalfall", width="stretch",
         on_click=apply_preset, args=("Normalfall",),
-        help="Ausreichend Kapazität überall - das Netzwerk hat echte Routing-Wahlfreiheit.",
+        help="Standardnetz mit echter Routing-Wahlfreiheit - die Verteilzentren sind aber knapp (215 Durchsatz gegen 254 Nachfrage): 39 Einheiten Fehlmenge im Optimum.",
     )
 with preset_col2:
     st.button(
@@ -616,6 +616,6 @@ Algorithms, and Applications.* Prentice Hall - Kapitel 11 (Network Simplex Algor
 st.markdown("---")
 st.caption(
     "Diese Demo ist Teil des Portfolios von [Sebastian Hanisch](https://sebastianhanisch.net) – "
-    "Operations Research und Machine Learning. Interesse an einer maßgeschneiderten Lösung für "
-    "Ihr Unternehmen? [Kontakt aufnehmen](https://sebastianhanisch.net/kontakt.html)"
+    "Operations Research und Machine Learning ([Über mich](https://sebastianhanisch.net/ueber-mich.html)). "
+    "Mehr zum Thema: [Netzwerkdesign optimieren](https://sebastianhanisch.net/netzwerkdesign-optimierung.html)."
 )
