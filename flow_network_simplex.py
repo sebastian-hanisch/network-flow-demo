@@ -45,7 +45,7 @@ ARTIFICIAL_CAPACITY = 1e12
 
 class NetworkSimplexResult:
     def __init__(self, flow, cost, iterations, feasible, artificial_flow, potentials=None, reduced_costs=None, status=None):
-        self.potentials = potentials or {}  # Knotenpotentiale der Schluss-Basis (Konvention: pi(Kopf) = pi(Schwanz) - Kosten auf Baumbögen)
+        self.potentials = potentials or {}  # Knotenpotentiale der Schluss-Basis (Konvention: pi(Kopf) = pi(Tail) - Kosten auf Baumbögen)
         self.reduced_costs = reduced_costs or {}  # dict: real Arc.idx -> reduzierte Kosten (0 auf Baumbögen); voller Bogen mit < 0: eine weitere Einheit Kapazität spart |Wert|
         self.status = status or {}  # dict: real Arc.idx -> "T" (Baum), "L" (unten), "U" (oben)
         self.flow = flow  # dict: real Arc.idx -> Flusswert
