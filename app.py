@@ -140,6 +140,17 @@ unten sowie formal hergeleitet im Expander "📐 Mathematische Formulierung".
 """
 )
 
+# erklaerseite:einfach:start (erzeugt von tools/set_demo_explainer.py (Website-Repo) aus tools/content/explainers/distributionsnetz-erklaert.json, nicht von Hand ändern)
+with st.expander("💬 In einfachen Worten"):
+    st.markdown(
+        """
+Werke stellen Ware her, **Verteilzentren** schleusen sie durch, und Filialen brauchen feste Mengen. Jede Strecke und jede Station kostet Geld und hat eine Obergrenze. Gesucht ist der Warenfluss, der alle Filialen beliefert und insgesamt am wenigsten kostet. Reicht die Kapazität nicht, gibt es eine teure **Notbeschaffung**: So bleibt die Aufgabe immer lösbar, und die **Fehlmenge** wird sichtbar. Die Demo löst das mit einem eigenen **Netzwerksimplex**, prüft ihn gegen zwei unabhängige Löser und vergleicht ihn mit drei einfachen Lieferregeln. Außerdem zeigt sie, was ein Ausbau spart und welche Engpässe am meisten wert sind.
+
+[Ausführlich und verständlich erklärt, mit Fachteil](https://sebastianhanisch.net/distributionsnetz-erklaert.html)
+        """
+    )
+# erklaerseite:einfach:end
+
 st.caption("🎯 Schnellstart – ein Beispielszenario laden:")
 preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
 with preset_col1:
@@ -354,7 +365,7 @@ if max(exact_costs) - min(exact_costs) <= max(1.0, 0.001 * min(exact_costs)):
     st.success("✅ Alle drei exakten Löser (Netzwerksimplex, OR-Tools, HiGHS-LP) liefern dieselben Gesamtkosten.")
 else:
     st.warning("⚠️ Die exakten Löser weichen voneinander ab - das sollte praktisch nicht vorkommen.")
-st.caption("Keine Praxisregel gewinnt überall: „Regional“ (das nächste DC, dann das billigste Werk) ist mal besser, mal schlechter als die billigste Route je Filiale; „größte Nachfrage zuerst“ hilft vor allem bei knappen DCs. Preset wechseln und vergleichen.")
+st.caption("Keine Praxisregel gewinnt überall: „Regional“ (das nächste DC, dann das billigste Werk) ist mal besser, mal schlechter als die billigste Route je Filiale; „größte Nachfrage zuerst“ gewinnt nur im DC-Engpass (im Normalfall und in der Nachfragespitze ist sie die schlechteste Regel). Preset wechseln und vergleichen.")
 
 with st.expander("🔬 Laufzeit gegen Netzgröße", expanded=False):
     st.caption("Drei Größenstufen (3 / 6 / 10 Werke, 3 / 8 / 14 DCs, 8 / 25 / 60 Filialen, Seed 7): Laufzeit der vier Verfahren und Simplex-Iterationen.")
@@ -527,6 +538,28 @@ bleiben aber dieselben.
     )
 
 with st.expander("📐 Mathematische Formulierung"):
+    # erklaerseite:lesehilfe:start (erzeugt von tools/set_demo_explainer.py (Website-Repo) aus tools/content/explainers/distributionsnetz-erklaert.json, nicht von Hand ändern)
+    st.markdown(
+        r"""
+**Lesehilfe.** Gegeben sind ein gerichtetes Netz aus Werken, Verteilzentren und Filialen mit Kosten und Kapazitäten je Kante und die feste Nachfrage der Filialen. Gesucht ist ein Fluss, der alle Bilanzen erfüllt und die Gesamtkosten minimiert.
+
+| Symbol | Bedeutung |
+|---|---|
+| $G=(V,E)$ | gerichteter Graph: Knoten $V$ (Werke, Ein- und Ausgang der Verteilzentren, Filialen, Hilfsknoten SRC und SINK) und Kanten $E$ |
+| $c_{ij}$ | Kosten je Einheit auf der Kante $(i,j)$ |
+| $u_{ij}$ | Kapazität der Kante $(i,j)$ |
+| $x_{ij}$ | Fluss auf der Kante $(i,j)$ |
+| $b_i$ | Bilanz des Knotens $i$ (positiv: Angebot, negativ: Nachfrage, null: Durchgang) |
+| $\pi_i$ | Potenzial (Schattenpreis) des Knotens $i$ |
+| $\bar c_{ij}$ | reduzierte Kosten der Kante $(i,j)$ |
+| $\bar d_k$ | Durchsatzgrenze des Verteilzentrums $k$ |
+| $\bar l_k$, $h_k$ | Lagerkapazität bzw. Lagerkosten je Einheit und Periode des Verteilzentrums $k$ |
+| $T$ | Zahl der Perioden |
+
+[Schritt für Schritt erklärt, mit Herleitung und Literatur](https://sebastianhanisch.net/distributionsnetz-erklaert.html#fachleute)
+        """
+    )
+    # erklaerseite:lesehilfe:end
     st.markdown(
         r"""
 Gegeben ein gerichteter Graph $G=(V,E)$ mit Knoten $V$ (Werke, Verteilzentrum-Ein-/
